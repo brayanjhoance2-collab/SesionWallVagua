@@ -7,12 +7,22 @@ const { verificarToken } = require('../middlewares/autenticacion');
 
 router.post('/registro',
   [
-    body('nombre').notEmpty().withMessage('El nombre es requerido'),
+    body('username').notEmpty().withMessage('El username es requerido'),
+    body('apodo').notEmpty().withMessage('El apodo es requerido'),
+    body('nombreCompleto').notEmpty().withMessage('El nombre completo es requerido'),
     body('email').isEmail().withMessage('Email inválido'),
     body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener mínimo 6 caracteres'),
     validarResultado
   ],
   authControlador.registro
+);
+
+router.post('/registro-google',
+  [
+    body('googleToken').notEmpty().withMessage('Token de Google requerido'),
+    validarResultado
+  ],
+  authControlador.registroGoogle
 );
 
 router.post('/verificar-codigo',

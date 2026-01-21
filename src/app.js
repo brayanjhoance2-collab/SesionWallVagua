@@ -11,7 +11,8 @@ const coleccionRutas = require('./rutas/coleccionRutas');
 const notificacionRutas = require('./rutas/notificacionRutas');
 const categoriaRutas = require('./rutas/categoriaRutas');
 const onboardingRutas = require('./rutas/onboardingRutas');
-
+const leonardoRutas = require('./rutas/leonardoRutas');
+const puntosRutas = require('./rutas/puntosRutas');
 
 const app = express();
 
@@ -33,7 +34,8 @@ app.use('/api/colecciones', coleccionRutas);
 app.use('/api/notificaciones', notificacionRutas);
 app.use('/api/categorias', categoriaRutas);
 app.use('/api/onboarding', onboardingRutas);
-
+app.use('/api/leonardo', leonardoRutas);
+app.use('/api/puntos', puntosRutas);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

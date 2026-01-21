@@ -15,7 +15,7 @@ const verificarCompra = async (req, res) => {
     }
 
     const [compraExistente] = await db.query(
-      'SELECT id, google_account_id FROM suscripciones WHERE google_play_purchase_token = ?',
+      'SELECT id, usuario_id, google_account_id FROM suscripciones WHERE google_play_purchase_token = ?',
       [purchaseToken]
     );
 
@@ -28,6 +28,13 @@ const verificarCompra = async (req, res) => {
         await db.query(
           'UPDATE suscripciones SET google_account_id = ? WHERE id = ?',
           [googleAccountId, compraExistente[0].id]
+        );
+      }
+
+      if (compraExistente[0].usuario_id) {
+        await db.query(
+          'UPDATE usuarios SET es_premium = TRUE, fecha_inicio_premium = NOW(), fecha_fin_premium = (SELECT fecha_fin FROM suscripciones WHERE id = ?) WHERE id = ?',
+          [compraExistente[0].id, compraExistente[0].usuario_id]
         );
       }
       
@@ -101,6 +108,11 @@ const verificarCompra = async (req, res) => {
 
     if (req.usuarioId) {
       await db.query(
+        'UPDATE usuarios SET es_premium = TRUE, fecha_inicio_premium = NOW(), fecha_fin_premium = ? WHERE id = ?',
+        [fechaFin, req.usuarioId]
+      );
+
+      await db.query(
         'INSERT INTO logs_actividad (usuario_id, tipo_accion, descripcion) VALUES (?, ?, ?)',
         [req.usuarioId, 'activacion_suscripcion', `Suscripción ${tipoSuscripcion} activada vía Google Play`]
       );
@@ -168,6 +180,10 @@ const sincronizarSuscripcion = async (req, res) => {
     );
 
     if (suscripciones.length === 0) {
+      await db.query(
+        'UPDATE usuarios SET es_premium = FALSE, fecha_fin_premium = NULL WHERE id = ?',
+        [usuarioId]
+      );
       return exitoRespuesta(res, 'No hay suscripción activa', { suscripcionActiva: false });
     }
 
@@ -190,6 +206,12 @@ const sincronizarSuscripcion = async (req, res) => {
         'UPDATE suscripciones SET estado = ? WHERE id = ?',
         ['expirada', suscripcion.id]
       );
+
+      await db.query(
+        'UPDATE usuarios SET es_premium = FALSE, fecha_fin_premium = NULL WHERE id = ?',
+        [usuarioId]
+      );
+
       return exitoRespuesta(res, 'Suscripción expirada', { suscripcionActiva: false });
     }
 
@@ -218,6 +240,11 @@ const sincronizarSuscripcion = async (req, res) => {
         JSON.stringify(subscription.rawResponse),
         suscripcion.id
       ]
+    );
+
+    await db.query(
+      'UPDATE usuarios SET es_premium = TRUE, fecha_fin_premium = ? WHERE id = ?',
+      [new Date(subscription.expiryTime), usuarioId]
     );
 
     return exitoRespuesta(res, 'Suscripción sincronizada', {
@@ -265,6 +292,11 @@ const crearSuscripcion = async (req, res) => {
     );
 
     await db.query(
+      'UPDATE usuarios SET es_premium = TRUE, fecha_inicio_premium = ?, fecha_fin_premium = ? WHERE id = ?',
+      [fechaInicio, fechaFin, usuarioId]
+    );
+
+    await db.query(
       'INSERT INTO logs_actividad (usuario_id, tipo_accion, descripcion) VALUES (?, ?, ?)',
       [usuarioId, 'activacion_suscripcion', `Suscripción ${tipoSuscripcion} activada`]
     );
@@ -290,6 +322,10 @@ const obtenerSuscripcionActual = async (req, res) => {
     );
 
     if (suscripciones.length === 0) {
+      await db.query(
+        'UPDATE usuarios SET es_premium = FALSE, fecha_fin_premium = NULL WHERE id = ?',
+        [usuarioId]
+      );
       return exitoRespuesta(res, 'No hay suscripción activa', { suscripcionActiva: false });
     }
 
@@ -302,6 +338,12 @@ const obtenerSuscripcionActual = async (req, res) => {
         'UPDATE suscripciones SET estado = "expirada" WHERE id = ?',
         [suscripcion.id]
       );
+
+      await db.query(
+        'UPDATE usuarios SET es_premium = FALSE, fecha_fin_premium = NULL WHERE id = ?',
+        [usuarioId]
+      );
+
       return exitoRespuesta(res, 'Suscripción expirada', { suscripcionActiva: false });
     }
 

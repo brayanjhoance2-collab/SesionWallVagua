@@ -1,29 +1,156 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const db = require('../config/baseDatos');
 const { JWT_SECRET, JWT_EXPIRE } = require('../config/servidor');
 const { exitoRespuesta, errorRespuesta } = require('../utilidades/respuestas');
 const { generarCodigoVerificacion, calcularExpiracion } = require('../utilidades/generadorCodigos');
 const { enviarCodigoVerificacion } = require('../utilidades/enviarEmail');
 
-const registro = async (req, res) => {
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const registroGoogle = async (req, res) => {
   try {
-    const { nombre, email, password } = req.body;
+    const { googleToken } = req.body;
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: googleToken,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub: googleId } = payload;
 
     const [usuarioExistente] = await db.query(
-      'SELECT id FROM usuarios WHERE email = ?',
-      [email]
+      'SELECT * FROM usuarios WHERE email = ? OR google_play_id = ?',
+      [email, googleId]
     );
 
     if (usuarioExistente.length > 0) {
-      return errorRespuesta(res, 'El email ya está registrado', 400);
+      const usuario = usuarioExistente[0];
+
+      if (!usuario.verificado) {
+        await db.query(
+          'UPDATE usuarios SET verificado = TRUE, activo = TRUE WHERE id = ?',
+          [usuario.id]
+        );
+      }
+
+      const token = jwt.sign(
+        { id: usuario.id, email: usuario.email },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRE }
+      );
+
+      await db.query(
+        'INSERT INTO logs_actividad (usuario_id, tipo_accion, ip_address) VALUES (?, ?, ?)',
+        [usuario.id, 'login', req.ip]
+      );
+
+      const [suscripcionActiva] = await db.query(
+        'SELECT * FROM suscripciones WHERE usuario_id = ? AND estado = "activa" AND fecha_fin > NOW() LIMIT 1',
+        [usuario.id]
+      );
+
+      if (suscripcionActiva.length > 0) {
+        await db.query(
+          'UPDATE usuarios SET es_premium = TRUE, fecha_fin_premium = ? WHERE id = ?',
+          [suscripcionActiva[0].fecha_fin, usuario.id]
+        );
+      }
+
+      return exitoRespuesta(res, 'Login con Google exitoso', {
+        usuario: {
+          id: usuario.id,
+          username: usuario.username,
+          apodo: usuario.apodo,
+          nombre_completo: usuario.nombre_completo,
+          email: usuario.email,
+          puntos: usuario.puntos,
+          es_premium: usuario.es_premium,
+          avatar_url: usuario.avatar_url
+        },
+        token
+      });
+    }
+
+    const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
+    const apodo = name || username;
+
+    const [resultado] = await db.query(
+      `INSERT INTO usuarios 
+      (username, apodo, nombre_completo, email, password_hash, google_play_id, avatar_url, verificado, activo) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [username, apodo, name, email, '', googleId, picture, true, true]
+    );
+
+    const usuarioId = resultado.insertId;
+
+    await db.query(
+      'INSERT INTO configuracion_usuario (usuario_id) VALUES (?)',
+      [usuarioId]
+    );
+
+    await db.query(
+      'INSERT INTO historial_puntos (usuario_id, evento_id, tipo_movimiento, puntos, descripcion) VALUES (?, (SELECT id FROM eventos_puntos WHERE nombre = "registro_nuevo"), "ganancia", 100, "Puntos por registro")',
+      [usuarioId]
+    );
+
+    await db.query(
+      'UPDATE usuarios SET puntos = 100 WHERE id = ?',
+      [usuarioId]
+    );
+
+    await db.query(
+      'INSERT INTO logs_actividad (usuario_id, tipo_accion, ip_address, descripcion) VALUES (?, ?, ?, ?)',
+      [usuarioId, 'login', req.ip, 'Registro via Google']
+    );
+
+    const token = jwt.sign(
+      { id: usuarioId, email },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRE }
+    );
+
+    return exitoRespuesta(res, 'Registro con Google exitoso', {
+      usuario: {
+        id: usuarioId,
+        username,
+        apodo,
+        nombre_completo: name,
+        email,
+        puntos: 100,
+        es_premium: false,
+        avatar_url: picture
+      },
+      token
+    }, 201);
+  } catch (error) {
+    console.error('Error en registro Google:', error);
+    return errorRespuesta(res, 'Error al registrar con Google', 500);
+  }
+};
+
+const registro = async (req, res) => {
+  try {
+    const { username, apodo, nombreCompleto, email, telefono, password } = req.body;
+
+    const [usuarioExistente] = await db.query(
+      'SELECT id FROM usuarios WHERE email = ? OR username = ? OR (telefono IS NOT NULL AND telefono = ?)',
+      [email, username, telefono]
+    );
+
+    if (usuarioExistente.length > 0) {
+      return errorRespuesta(res, 'Email, username o teléfono ya registrado', 400);
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
     const [resultado] = await db.query(
-      'INSERT INTO usuarios (nombre, email, password_hash, activo) VALUES (?, ?, ?, ?)',
-      [nombre, email, passwordHash, false]
+      `INSERT INTO usuarios 
+      (username, apodo, nombre_completo, email, telefono, password_hash, activo, verificado) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [username, apodo, nombreCompleto, email, telefono || null, passwordHash, false, false]
     );
 
     const usuarioId = resultado.insertId;
@@ -69,12 +196,22 @@ const verificarCodigo = async (req, res) => {
     );
 
     await db.query(
-      'UPDATE usuarios SET activo = TRUE WHERE id = ?',
+      'UPDATE usuarios SET activo = TRUE, verificado = TRUE WHERE id = ?',
+      [usuarioId]
+    );
+
+    await db.query(
+      'INSERT INTO historial_puntos (usuario_id, evento_id, tipo_movimiento, puntos, descripcion) VALUES (?, (SELECT id FROM eventos_puntos WHERE nombre = "registro_nuevo"), "ganancia", 100, "Puntos por registro")',
+      [usuarioId]
+    );
+
+    await db.query(
+      'UPDATE usuarios SET puntos = 100 WHERE id = ?',
       [usuarioId]
     );
 
     const [usuario] = await db.query(
-      'SELECT id, nombre, email FROM usuarios WHERE id = ?',
+      'SELECT id, username, apodo, nombre_completo, email, puntos, es_premium FROM usuarios WHERE id = ?',
       [usuarioId]
     );
 
@@ -109,7 +246,7 @@ const login = async (req, res) => {
 
     const usuario = usuarios[0];
 
-    if (!usuario.activo) {
+    if (!usuario.activo || !usuario.verificado) {
       return errorRespuesta(res, 'Cuenta no verificada. Verifica tu email primero.', 403);
     }
 
@@ -118,6 +255,45 @@ const login = async (req, res) => {
     if (!passwordValido) {
       return errorRespuesta(res, 'Credenciales inválidas', 401);
     }
+
+    const [loginHoy] = await db.query(
+      'SELECT * FROM historial_puntos WHERE usuario_id = ? AND evento_id = (SELECT id FROM eventos_puntos WHERE nombre = "login_diario") AND DATE(fecha_movimiento) = CURDATE()',
+      [usuario.id]
+    );
+
+    if (loginHoy.length === 0) {
+      await db.query(
+        'INSERT INTO historial_puntos (usuario_id, evento_id, tipo_movimiento, puntos, descripcion) VALUES (?, (SELECT id FROM eventos_puntos WHERE nombre = "login_diario"), "ganancia", 5, "Login diario")',
+        [usuario.id]
+      );
+
+      await db.query(
+        'UPDATE usuarios SET puntos = puntos + 5 WHERE id = ?',
+        [usuario.id]
+      );
+    }
+
+    const [suscripcionActiva] = await db.query(
+      'SELECT * FROM suscripciones WHERE usuario_id = ? AND estado = "activa" AND fecha_fin > NOW() LIMIT 1',
+      [usuario.id]
+    );
+
+    if (suscripcionActiva.length > 0) {
+      await db.query(
+        'UPDATE usuarios SET es_premium = TRUE, fecha_inicio_premium = ?, fecha_fin_premium = ? WHERE id = ?',
+        [suscripcionActiva[0].fecha_inicio, suscripcionActiva[0].fecha_fin, usuario.id]
+      );
+    } else {
+      await db.query(
+        'UPDATE usuarios SET es_premium = FALSE, fecha_fin_premium = NULL WHERE id = ?',
+        [usuario.id]
+      );
+    }
+
+    const [usuarioActualizado] = await db.query(
+      'SELECT id, username, apodo, nombre_completo, email, telefono, puntos, es_premium, fecha_fin_premium, avatar_url FROM usuarios WHERE id = ?',
+      [usuario.id]
+    );
 
     const token = jwt.sign(
       { id: usuario.id, email: usuario.email },
@@ -131,11 +307,7 @@ const login = async (req, res) => {
     );
 
     return exitoRespuesta(res, 'Login exitoso', {
-      usuario: {
-        id: usuario.id,
-        nombre: usuario.nombre,
-        email: usuario.email
-      },
+      usuario: usuarioActualizado[0],
       token
     });
   } catch (error) {
@@ -271,6 +443,7 @@ const cambiarPassword = async (req, res) => {
 
 module.exports = {
   registro,
+  registroGoogle,
   verificarCodigo,
   login,
   solicitarRecuperacionPassword,
