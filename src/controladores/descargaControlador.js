@@ -6,9 +6,18 @@ const registrarDescarga = async (req, res) => {
     const { wallpaperId, calidadDescarga, dispositivo } = req.body;
     const usuarioId = req.usuarioId;
 
+    const [wallpaper] = await db.query(
+      'SELECT id FROM wallpapers WHERE id = ?',
+      [wallpaperId]
+    );
+
+    if (wallpaper.length === 0) {
+      return errorRespuesta(res, 'Wallpaper no encontrado', 404);
+    }
+
     await db.query(
       'INSERT INTO descargas (usuario_id, wallpaper_id, calidad_descarga, dispositivo) VALUES (?, ?, ?, ?)',
-      [usuarioId, wallpaperId, calidadDescarga, dispositivo]
+      [usuarioId, wallpaperId, calidadDescarga || 'alta', dispositivo]
     );
 
     await db.query(
@@ -30,9 +39,18 @@ const obtenerHistorialDescargas = async (req, res) => {
     const offset = (pagina - 1) * limite;
 
     const [descargas] = await db.query(`
-      SELECT d.*, w.titulo, w.url_imagen, w.url_thumbnail, c.nombre as nombre_categoria
+      SELECT 
+        d.id,
+        d.wallpaper_id,
+        d.fecha_descarga,
+        d.calidad_descarga,
+        d.dispositivo,
+        COALESCE(w.titulo, 'Sin título') as titulo,
+        COALESCE(w.url_imagen, '') as url_imagen,
+        COALESCE(w.url_thumbnail, w.url_imagen, '') as url_thumbnail,
+        COALESCE(c.nombre, 'Sin categoría') as nombre_categoria
       FROM descargas d
-      INNER JOIN wallpapers w ON d.wallpaper_id = w.id
+      LEFT JOIN wallpapers w ON d.wallpaper_id = w.id
       LEFT JOIN categorias c ON w.categoria_id = c.id
       WHERE d.usuario_id = ?
       ORDER BY d.fecha_descarga DESC

@@ -6,6 +6,15 @@ const agregarFavorito = async (req, res) => {
     const { wallpaperId } = req.body;
     const usuarioId = req.usuarioId;
 
+    const [wallpaper] = await db.query(
+      'SELECT id FROM wallpapers WHERE id = ?',
+      [wallpaperId]
+    );
+
+    if (wallpaper.length === 0) {
+      return errorRespuesta(res, 'Wallpaper no encontrado', 404);
+    }
+
     const [existente] = await db.query(
       'SELECT id FROM favoritos WHERE usuario_id = ? AND wallpaper_id = ?',
       [usuarioId, wallpaperId]
@@ -65,11 +74,22 @@ const obtenerFavoritos = async (req, res) => {
     const offset = (pagina - 1) * limite;
 
     const [favoritos] = await db.query(`
-      SELECT f.*, w.*, c.nombre as nombre_categoria
+      SELECT 
+        f.id as favorito_id,
+        f.fecha_agregado,
+        f.wallpaper_id,
+        COALESCE(w.titulo, 'Sin título') as titulo,
+        COALESCE(w.url_imagen, '') as url_imagen,
+        COALESCE(w.url_thumbnail, w.url_imagen, '') as url_thumbnail,
+        w.resolucion,
+        w.premium,
+        w.generado_ia,
+        COALESCE(c.nombre, 'Sin categoría') as nombre_categoria,
+        c.id as categoria_id
       FROM favoritos f
-      INNER JOIN wallpapers w ON f.wallpaper_id = w.id
+      LEFT JOIN wallpapers w ON f.wallpaper_id = w.id
       LEFT JOIN categorias c ON w.categoria_id = c.id
-      WHERE f.usuario_id = ? AND w.activo = TRUE
+      WHERE f.usuario_id = ? AND (w.activo = TRUE OR w.activo IS NULL)
       ORDER BY f.fecha_agregado DESC
       LIMIT ? OFFSET ?
     `, [usuarioId, parseInt(limite), parseInt(offset)]);
