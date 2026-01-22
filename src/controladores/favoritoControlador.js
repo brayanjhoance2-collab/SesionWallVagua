@@ -6,15 +6,6 @@ const agregarFavorito = async (req, res) => {
     const { wallpaperId } = req.body;
     const usuarioId = req.usuarioId;
 
-    const [wallpaper] = await db.query(
-      'SELECT id FROM wallpapers WHERE id = ?',
-      [wallpaperId]
-    );
-
-    if (wallpaper.length === 0) {
-      return errorRespuesta(res, 'Wallpaper no encontrado', 404);
-    }
-
     const [existente] = await db.query(
       'SELECT id FROM favoritos WHERE usuario_id = ? AND wallpaper_id = ?',
       [usuarioId, wallpaperId]
@@ -27,11 +18,6 @@ const agregarFavorito = async (req, res) => {
     await db.query(
       'INSERT INTO favoritos (usuario_id, wallpaper_id) VALUES (?, ?)',
       [usuarioId, wallpaperId]
-    );
-
-    await db.query(
-      'INSERT INTO estadisticas_wallpapers (wallpaper_id, total_favoritos) VALUES (?, 1) ON DUPLICATE KEY UPDATE total_favoritos = total_favoritos + 1',
-      [wallpaperId]
     );
 
     return exitoRespuesta(res, 'Wallpaper agregado a favoritos', null, 201);
@@ -54,11 +40,6 @@ const eliminarFavorito = async (req, res) => {
     if (resultado.affectedRows === 0) {
       return errorRespuesta(res, 'Favorito no encontrado', 404);
     }
-
-    await db.query(
-      'UPDATE estadisticas_wallpapers SET total_favoritos = GREATEST(total_favoritos - 1, 0) WHERE wallpaper_id = ?',
-      [wallpaperId]
-    );
 
     return exitoRespuesta(res, 'Favorito eliminado');
   } catch (error) {

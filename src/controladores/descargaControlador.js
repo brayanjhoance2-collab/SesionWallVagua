@@ -6,23 +6,9 @@ const registrarDescarga = async (req, res) => {
     const { wallpaperId, calidadDescarga, dispositivo } = req.body;
     const usuarioId = req.usuarioId;
 
-    const [wallpaper] = await db.query(
-      'SELECT id FROM wallpapers WHERE id = ?',
-      [wallpaperId]
-    );
-
-    if (wallpaper.length === 0) {
-      return errorRespuesta(res, 'Wallpaper no encontrado', 404);
-    }
-
     await db.query(
       'INSERT INTO descargas (usuario_id, wallpaper_id, calidad_descarga, dispositivo) VALUES (?, ?, ?, ?)',
       [usuarioId, wallpaperId, calidadDescarga || 'alta', dispositivo]
-    );
-
-    await db.query(
-      'INSERT INTO estadisticas_wallpapers (wallpaper_id, total_descargas) VALUES (?, 1) ON DUPLICATE KEY UPDATE total_descargas = total_descargas + 1',
-      [wallpaperId]
     );
 
     return exitoRespuesta(res, 'Descarga registrada', null, 201);
