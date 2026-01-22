@@ -6,7 +6,7 @@ const obtenerPerfil = async (req, res) => {
     const usuarioId = req.usuarioId;
 
     const [usuarios] = await db.query(
-      'SELECT id, nombre, email, fecha_registro FROM usuarios WHERE id = ?',
+      'SELECT id, username, apodo, nombre_completo, email, telefono, puntos, es_premium, fecha_registro FROM usuarios WHERE id = ?',
       [usuarioId]
     );
 
@@ -32,6 +32,49 @@ const obtenerPerfil = async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo perfil:', error);
     return errorRespuesta(res, 'Error al obtener perfil', 500);
+  }
+};
+
+const actualizarPerfil = async (req, res) => {
+  try {
+    const usuarioId = req.usuarioId;
+    const { apodo, nombre_completo } = req.body;
+
+    const campos = [];
+    const valores = [];
+
+    if (apodo) {
+      campos.push('apodo = ?');
+      valores.push(apodo);
+    }
+
+    if (nombre_completo) {
+      campos.push('nombre_completo = ?');
+      valores.push(nombre_completo);
+    }
+
+    if (campos.length === 0) {
+      return errorRespuesta(res, 'No hay campos para actualizar', 400);
+    }
+
+    valores.push(usuarioId);
+
+    await db.query(
+      `UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`,
+      valores
+    );
+
+    const [usuarioActualizado] = await db.query(
+      'SELECT id, username, apodo, nombre_completo, email, puntos, es_premium FROM usuarios WHERE id = ?',
+      [usuarioId]
+    );
+
+    return exitoRespuesta(res, 'Perfil actualizado correctamente', {
+      usuario: usuarioActualizado[0]
+    });
+  } catch (error) {
+    console.error('Error actualizando perfil:', error);
+    return errorRespuesta(res, 'Error al actualizar perfil', 500);
   }
 };
 
@@ -144,6 +187,7 @@ const actualizarConfiguracion = async (req, res) => {
 
 module.exports = {
   obtenerPerfil,
+  actualizarPerfil,
   actualizarPreferencias,
   actualizarGustos,
   actualizarConfiguracion
