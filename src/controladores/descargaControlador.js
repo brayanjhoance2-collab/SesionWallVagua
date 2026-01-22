@@ -3,12 +3,24 @@ const { exitoRespuesta, errorRespuesta } = require('../utilidades/respuestas');
 
 const registrarDescarga = async (req, res) => {
   try {
-    const { wallpaperId, calidadDescarga, dispositivo } = req.body;
+    const { 
+      wallpaperId, 
+      titulo, 
+      urlImagen, 
+      urlThumbnail, 
+      categoriaNombre,
+      resolucion,
+      mimeType,
+      calidadDescarga, 
+      dispositivo 
+    } = req.body;
     const usuarioId = req.usuarioId;
 
     await db.query(
-      'INSERT INTO descargas (usuario_id, wallpaper_id, calidad_descarga, dispositivo) VALUES (?, ?, ?, ?)',
-      [usuarioId, wallpaperId, calidadDescarga || 'alta', dispositivo]
+      `INSERT INTO descargas 
+      (usuario_id, wallpaper_id, titulo, url_imagen, url_thumbnail, categoria_nombre, resolucion, mime_type, calidad_descarga, dispositivo) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [usuarioId, wallpaperId, titulo, urlImagen, urlThumbnail, categoriaNombre, resolucion, mimeType, calidadDescarga || 'alta', dispositivo]
     );
 
     return exitoRespuesta(res, 'Descarga registrada', null, 201);
@@ -26,20 +38,20 @@ const obtenerHistorialDescargas = async (req, res) => {
 
     const [descargas] = await db.query(`
       SELECT 
-        d.id,
-        d.wallpaper_id,
-        d.fecha_descarga,
-        d.calidad_descarga,
-        d.dispositivo,
-        COALESCE(w.titulo, 'Sin título') as titulo,
-        COALESCE(w.url_imagen, '') as url_imagen,
-        COALESCE(w.url_thumbnail, w.url_imagen, '') as url_thumbnail,
-        COALESCE(c.nombre, 'Sin categoría') as nombre_categoria
-      FROM descargas d
-      LEFT JOIN wallpapers w ON d.wallpaper_id = w.id
-      LEFT JOIN categorias c ON w.categoria_id = c.id
-      WHERE d.usuario_id = ?
-      ORDER BY d.fecha_descarga DESC
+        id,
+        wallpaper_id,
+        fecha_descarga,
+        calidad_descarga,
+        dispositivo,
+        titulo,
+        url_imagen,
+        url_thumbnail,
+        categoria_nombre,
+        resolucion,
+        mime_type
+      FROM descargas
+      WHERE usuario_id = ?
+      ORDER BY fecha_descarga DESC
       LIMIT ? OFFSET ?
     `, [usuarioId, parseInt(limite), parseInt(offset)]);
 

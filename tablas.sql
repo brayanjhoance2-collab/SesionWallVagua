@@ -379,3 +379,16 @@ INSERT INTO eventos_puntos (nombre, descripcion, puntos_otorgados, limite_diario
 ('generacion_ia', 'Puntos bonus por generar wallpaper con IA', 25, NULL, NULL),
 ('rating_app', 'Puntos por calificar la app en Play Store', 30, NULL, 1),
 ('completar_perfil', 'Puntos por completar el perfil al 100%', 40, NULL, 1);
+
+
+-- 1. Elimina las foreign keys
+ALTER TABLE favoritos DROP FOREIGN KEY favoritos_ibfk_2;
+ALTER TABLE descargas DROP FOREIGN KEY descargas_ibfk_2;
+
+-- 2. Cambia el tipo de columna
+ALTER TABLE favoritos MODIFY COLUMN wallpaper_id VARCHAR(50) NOT NULL;
+ALTER TABLE descargas MODIFY COLUMN wallpaper_id VARCHAR(50) NOT NULL;
+
+-- 3. Agrega índices (sin foreign keys)
+ALTER TABLE favoritos ADD INDEX idx_wallpaper_id (wallpaper_id);
+ALTER TABLE descargas ADD INDEX idx_wallpaper_id (wallpaper_id);

@@ -3,7 +3,17 @@ const { exitoRespuesta, errorRespuesta } = require('../utilidades/respuestas');
 
 const agregarFavorito = async (req, res) => {
   try {
-    const { wallpaperId } = req.body;
+    const { 
+      wallpaperId, 
+      titulo, 
+      urlImagen, 
+      urlThumbnail, 
+      categoriaNombre,
+      resolucion,
+      mimeType,
+      tipoWallpaper,
+      esPremium
+    } = req.body;
     const usuarioId = req.usuarioId;
 
     const [existente] = await db.query(
@@ -16,8 +26,10 @@ const agregarFavorito = async (req, res) => {
     }
 
     await db.query(
-      'INSERT INTO favoritos (usuario_id, wallpaper_id) VALUES (?, ?)',
-      [usuarioId, wallpaperId]
+      `INSERT INTO favoritos 
+      (usuario_id, wallpaper_id, titulo, url_imagen, url_thumbnail, categoria_nombre, resolucion, mime_type, tipo_wallpaper, es_premium) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [usuarioId, wallpaperId, titulo, urlImagen, urlThumbnail, categoriaNombre, resolucion, mimeType, tipoWallpaper, esPremium || false]
     );
 
     return exitoRespuesta(res, 'Wallpaper agregado a favoritos', null, 201);
@@ -56,22 +68,20 @@ const obtenerFavoritos = async (req, res) => {
 
     const [favoritos] = await db.query(`
       SELECT 
-        f.id as favorito_id,
-        f.fecha_agregado,
-        f.wallpaper_id,
-        COALESCE(w.titulo, 'Sin título') as titulo,
-        COALESCE(w.url_imagen, '') as url_imagen,
-        COALESCE(w.url_thumbnail, w.url_imagen, '') as url_thumbnail,
-        w.resolucion,
-        w.premium,
-        w.generado_ia,
-        COALESCE(c.nombre, 'Sin categoría') as nombre_categoria,
-        c.id as categoria_id
-      FROM favoritos f
-      LEFT JOIN wallpapers w ON f.wallpaper_id = w.id
-      LEFT JOIN categorias c ON w.categoria_id = c.id
-      WHERE f.usuario_id = ? AND (w.activo = TRUE OR w.activo IS NULL)
-      ORDER BY f.fecha_agregado DESC
+        id as favorito_id,
+        fecha_agregado,
+        wallpaper_id,
+        titulo,
+        url_imagen,
+        url_thumbnail,
+        categoria_nombre,
+        resolucion,
+        mime_type,
+        tipo_wallpaper,
+        es_premium
+      FROM favoritos
+      WHERE usuario_id = ?
+      ORDER BY fecha_agregado DESC
       LIMIT ? OFFSET ?
     `, [usuarioId, parseInt(limite), parseInt(offset)]);
 

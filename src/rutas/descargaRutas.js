@@ -11,8 +11,15 @@ router.get('/historial', descargaControlador.obtenerHistorialDescargas);
 
 router.post('/',
   [
-    body('wallpaperId').isInt().withMessage('ID de wallpaper inválido'),
+    body('wallpaperId').notEmpty().withMessage('ID de wallpaper requerido'),
+    body('titulo').optional().isString(),
+    body('urlImagen').optional().isString(),
+    body('urlThumbnail').optional().isString(),
+    body('categoriaNombre').optional().isString(),
+    body('resolucion').optional().isString(),
+    body('mimeType').optional().isString(),
     body('calidadDescarga').optional().isIn(['baja', 'media', 'alta', 'original']).withMessage('Calidad inválida'),
+    body('dispositivo').optional().isString(),
     validarResultado
   ],
   descargaControlador.registrarDescarga
